@@ -1,66 +1,32 @@
-# =============================================
-# 🧠 Literary Chat with Richard Wagner (Windows)
-# =============================================
+import streamlit as st
+from src.llm.prompts import build_user_prompt
 
-# 1. Prevent multiprocessing issues on Windows
-if __name__ == "__main__":
-    import multiprocessing
-    multiprocessing.freeze_support()  # Required on Windows
-    multiprocessing.set_start_method("spawn", force=True)
+st.set_page_config(page_title="ReplyCraft", page_icon="💬")
+st.title("💬 ReplyCraft")
 
-    # 2. Import main libraries
-    from sentence_transformers import SentenceTransformer, util
-    import nltk
-    from nltk.tokenize import sent_tokenize
-    import torch
+with st.sidebar:
+    st.header("Settings")
+    language = st.selectbox("Language", ["en", "cs", "pt", "mix"], index=0)
+    tone = st.selectbox("Tone", ["playful", "confident", "funny", "flirty-but-respectful", "chill"], index=0)
+    risk = st.selectbox("Risk level", ["safe", "medium", "bold"], index=0)
+    goal = st.selectbox(
+        "Goal",
+        ["keep convo going", "reply to dry text", "ask a question", "ask them out"],
+        index=0
+    )
 
-    # 3. Download NLTK resources (only the first time)
-    nltk.download("punkt", quiet=True)
+chat_text = st.text_area("Paste chat text:", height=220, placeholder="Them: ...\nMe: ...")
 
-    # 4. Path to your text file
-    file_path = r"C:\Users\neyma\Desktop\RWagner.txt"  # Use raw string for Windows paths
-
-    # 5. Read the text file
-    with open(file_path, "r", encoding="utf-8") as f:
-        raw_text = f.read()
-
-    # 6. Split the text into sentences
-    sentences = sent_tokenize(raw_text)
-
-    # 7. Load the model
-    print("🧩 Loading model...")
-    model = SentenceTransformer("all-MiniLM-L6-v2")
-
-    # 8. Generate embeddings (uses GPU if available)
-    print("⚙️ Generating embeddings...")
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    model.to(device)
-    sentence_embeddings = model.encode(sentences, convert_to_tensor=True, device=device)
-
-    # 9. Function to answer questions
-    def answer_question(question, top_k=5):
-        question_embedding = model.encode(question, convert_to_tensor=True, device=device)
-        similarities = util.cos_sim(question_embedding, sentence_embeddings)[0]
-        top_indices = similarities.topk(k=top_k).indices
-        answers = [sentences[i] for i in top_indices]
-        return answers
-
-    # 10. Interactive chat loop
-    print("\n📚 Literary Chat with Richard Wagner — Ask a question (or type 'exit'):\n")
-
-    while True:
-        try:
-            question = input("You: ")
-            if question.lower().strip() in ["exit", "quit", "sair"]:
-                print("Chat closed.")
-                break
-
-            answers = answer_question(question)
-            print("\nAnswer(s):")
-            for a in answers:
-                print("-", a)
-            print("\n---\n")
-
-        except KeyboardInterrupt:
-            print("\nChat interrupted by user.")
-            break
+if st.button("Build prompt(debug)", type="primary"):
+    if not chat_text.strip():
+        st.warning("Paste some chat text first.")
+    else:
+        prompt = build_user_prompt(
+            chat_text=chat_text,
+            language=language,
+            tone=tone,
+            risk=risk,
+            goal=goal,
+        )
+        st.subheader("Generated prompt(debug)")
+        st.code(prompt)
