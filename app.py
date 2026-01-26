@@ -12,6 +12,15 @@ load_dotenv(dotenv_path=env_path)
 st.set_page_config(page_title="ReplyCraft", page_icon="💬")
 st.title("💬 ReplyCraft")
 
+if "last_prompt" not in st.session_state:
+    st.session_state["last_prompt"] = None
+
+if "last_output" not in st.session_state:
+    st.session_state["last_output"] = None
+
+if "is_generating" not in st.session_state:
+    st.session_state["is_generating"] = False
+
 with st.sidebar:
     st.header("Settings")
     language = st.selectbox("Language", ["en", "cs", "pt", "mix"], index=0)
@@ -25,21 +34,18 @@ with st.sidebar:
 
 chat_text = st.text_area("Paste chat text:", height=220, placeholder="Them: ...\nMe: ...")
 
-if "last_prompt" not in st.session_state:
-    st.session_state.last_prompt = None
-
-if "last_output" not in st.session_state:
-    st.session_state.last_output = None
-
-if "is_generating" not in st.session_state:
-    st.session_state.is_generating = None
-
 col1, col2 = st.columns(2)
 
 with col1:
     build_prompt_btn = st.button("Build prompt(debug)", use_container_width=True)
 with col2:
-    generate_btn = st.button("Generate (Gemini)", type="primary", use_container_width=True, disabled=st.session_state.is_generating)
+    disabled_flag = bool(st.session_state.get("is_generating", False))
+    generate_btn = st.button(
+        "Generate (Gemini)", 
+        type="primary",
+        use_container_width=True,
+        disabled=disabled_flag
+        )
 
 if build_prompt_btn:
     if not chat_text.strip():
@@ -55,17 +61,17 @@ if generate_btn:
     else:
         prompt = build_user_prompt(chat_text, language, tone, risk, goal)
 
-        if st.session_state.last_prompt == prompt and st.session_state.last_output:
+        if st.session_state["last_prompt"] == prompt and st.session_state["last_output"]:
             st.subheader("Model output (cached)")
-            st.write(st.session_state.last_output)
+            st.write(st.session_state["last_output"])
         else:
             try:
-                st.session_state.is_generating = True
+                st.session_state["is_generating"] = True
                 with st.spinner("Generating..."):
                     result = generate_text(prompt, SYSTEM_INSTRUCTION)
 
-                st.session_state.last_prompt = prompt
-                st.session_state.last_output = result
+                st.session_state["last_prompt"] = prompt
+                st.session_state["last_output"]= result
 
                 st.subheader("Model output (raw)")
                 st.write(result)
@@ -77,4 +83,4 @@ if generate_btn:
                 st.error(f"Unexpected error: {e}")
 
             finally:
-                st.session_state.is_generating = False
+                st.session_state["is_generating"] = False
