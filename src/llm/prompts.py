@@ -10,39 +10,41 @@ def build_user_prompt(chat_text: str, language: str, tone: str, risk: str, goal:
 
     if language == "mix":
         output_rules = """
-OUTPUT:
-Return exactly 3 replies in this exact format:
-1) [EN] <reply in English>
-2) [CS] <reply in Czech>
-3) [PT] <reply in Portuguese>
+OUTPUT FORMAT (follow exactly):
+1) [EN] <reply in English, max 160 characters>
+2) [CS] <reply in Czech, max 160 characters>
+3) [PT] <reply in Portuguese, max 160 characters>
 """.strip()
     else:
         output_rules = """
-OUTPUT:
-Return exactly:
-1) Reply 1
-2) Reply 2
-3) Reply 3
+OUTPUT FORMAT (follow exactly):
+1) <Reply 1, max 160 characters>
+2) <Reply 2, max 160 characters>
+3) <Reply 3, max 160 characters>
 """.strip()
 
     prompt = f"""
-CHAT CONTEXT (what I am replying to):
+CHAT CONTEXT:
 {chat_text}
 
-TASK:
-Write 3 reply options.
+GOAL:
+{goal}
 
-SETTINGS:
+STYLE SETTINGS:
 - Language: {language}
 - Tone: {tone}
 - Risk: {risk}
-- Goal: {goal}
 
-RULES:
-- Each reply must be short (max ~2 sentences).
-- Be respectful, consent-first, and non-pushy.
-- If the goal is "ask them out", make it easy for them to say no.
+RULES (very important):
+- Write 3 distinct reply options.
+- Each reply must be ONE message only (no multi-paragraph).
+- Each reply must be <= 160 characters.
+- No cringe, no overexplaining, no long compliments.
+- Be natural, human, and specific to the chat context.
+- Keep it respectful, consent-first, and non-pushy.
+- If asking them out: make it easy to say no
 
 {output_rules}
 """.strip()
+    
     return prompt
