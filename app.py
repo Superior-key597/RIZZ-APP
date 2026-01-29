@@ -1,3 +1,4 @@
+import json
 import streamlit as st
 from dotenv import load_dotenv
 from pathlib import Path
@@ -41,24 +42,41 @@ with col1:
     show_debug = st.toggle("Show prompt debug", value=False)
 with col2:
     disabled_flag = bool(st.session_state.get("is_generating", False))
-    generate_btn = st.button(
-        "Generate replies", 
-        type="primary",
-        use_container_width=True,
-        disabled=disabled_flag
-        )
+    generate_btn = st.button("Generate replies", type="primary", use_container_width=True, disabled=disabled_flag)
     
-def parse_replies(raw: str) -> list[str]:
-    lines = [ln.strip() for ln in raw.splitlines() if ln.strip()]
-    replies = []
+def safe_json_loads(text: str) -> dict:
+    text = (text or "").strip()
 
-    for ln in lines:
-        m = re.match(r"^[123]\)\s*(.*)$", ln)
+    if text.startswith("```"):
+        text = text.strip("`").strip()
 
-        if m:
-            replies.append(m.group(1).strip())
+        if text.lower().startswith("json"):
+            text = text[4:].strip()
 
-    return replies[:3]
+    return json.loads(text)
+
+def validate_payload(data: dict) -> str | None:
+    if not isinstance(data, dict):
+        return "Model output is not a JSON object."
+    
+    if "replies" not in data or not isinstance(data["replies"], list):
+        return "JSON missing 'replies' list."
+    
+    if len(data["replies"]) != 3:
+        return "Expected exactly 3 replies."
+    
+    for r in data["replies"]:
+        if not isinstance(r, dict):
+            return "Each reply must be an object."
+        
+        if "text" not in r or "lang" not in r or "style_note" not in r:
+            return "Each reply must include: lang, text, style_note."
+        
+        if not isinstance(r["text"], str) or not r["text"].strip():
+            return "Reply text must be a non-empty string."
+        
+    return None
+
 
 if generate_btn:
     if not chat_text.strip():
@@ -69,6 +87,7 @@ if generate_btn:
         if st.session_state["last_prompt"] == prompt and st.session_state["last_output"]:
             raw = st.session_state["last_output"]
         else:
+            raw = None
             try:
                 st.session_state["is_generating"] = True
                 with st.spinner("Generating..."):
@@ -79,32 +98,42 @@ if generate_btn:
 
             except GeminiError as e:
                 st.error(str(e))
-                raw = None
 
             except Exception as e:
                 st.error(f"Unexpected error: {e}")
-                raw = None
+    
             finally:
                 st.session_state["is_generating"] = False
 
         if raw:
-            replies = parse_replies(raw)
+            try:
+                data = safe_json_loads(raw)
+                err = validate_payload(data)
+                if err:
+                    st.warning(err)
+                    st.subheader("Raw model output")
+                    st.code(raw)
+                else:
+                    st.subheader("Reply suggestions")
 
-            st.subheader("Reply suggestions")
+                    for i, r in enumerate(data["replies"], start=1):
+                        with st.container(border=True):
+                            st.markdown(f"**Option {i}** · `{r['lang']}`")
+                            st.write(r["text"])
+                            st.caption(r["style_note"])
+                            st.code(r["text"], language=None)
+
+                    safety_note = (data.get("safety_note") or "").strip()
+                    
+                    if safety_note:
+                        st.info(safety_note)
+
+            except json.JSONDecodeError:
+                st.warning("Model did not return valid JSON. Showing raw output:")
+                st.code(raw)
+
+        if show_debug:
+            st.subheader("Prompt (debug)")
+            st.code(prompt)
+                            
             
-            if not replies:
-                st.warning("I couldn't parse the replies cleanly. Here is the raw output:")
-                st.write(raw)
-            else:
-                for i, r in enumerate(replies, start=1):
-                    with st.container(border=True):
-                        st.markdown(f"**Option {i}**")
-                        st.write(r)
-                        st.code(r, language=None)
-                        
-            if show_debug:
-                st.subheader("Prompt (debug)")
-                st.code(prompt)
-
-            st.divider()
-            st.caption("Tip: If the replies feel off, add more context or paste 2-3 previous messages.")
