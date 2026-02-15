@@ -6,7 +6,7 @@ from google.genai import types
 class GeminiError(Exception):
     pass
 
-def generate_text(user_prompt: str, system_instruction: str) -> str:
+def generate_text(user_prompt: str, system_instruction: str, image = None) -> str:
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         raise GeminiError("Missing GEMINI_API_KEY. Add it to your .env file.")
@@ -14,7 +14,12 @@ def generate_text(user_prompt: str, system_instruction: str) -> str:
     client = genai.Client(api_key=api_key)
 
     model_id = os.getenv("GEMINI_MODEL", "models/gemini-2.5-flash")
-    
+
+    if image is None:
+        contents = user_prompt
+    else:
+        contents = [user_prompt, image]
+
     max_retries = 3
     base_delay = 2
 
@@ -22,7 +27,7 @@ def generate_text(user_prompt: str, system_instruction: str) -> str:
         try:
             response = client.models.generate_content(
                 model=model_id,
-                contents=user_prompt,
+                contents=contents,
                 config=types.GenerateContentConfig(
                     system_instruction=system_instruction,
                     temperature=0.7,

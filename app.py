@@ -1,8 +1,9 @@
+import io
 import json
 import streamlit as st
 from dotenv import load_dotenv
 from pathlib import Path
-import re
+from PIL import Image
 
 from src.llm.prompts import SYSTEM_INSTRUCTION, build_user_prompt
 from src.llm.gemini_client import generate_text, GeminiError
@@ -33,17 +34,10 @@ with st.sidebar:
         ["keep convo going", "reply to dry text", "ask a question", "ask them out"],
         index=0
     )
-
-chat_text = st.text_area("Paste the chat context:", height=220, placeholder="Them: ...\nMe: ...")
-
-col1, col2 = st.columns(2)
-
-with col1:
     show_debug = st.toggle("Show prompt debug", value=False)
-with col2:
-    disabled_flag = bool(st.session_state.get("is_generating", False))
-    generate_btn = st.button("Generate replies", type="primary", use_container_width=True, disabled=disabled_flag)
-    
+
+tab_text, tab_image = st.tabs(["📝 Paste Text", "🖼️ Upload Screenshot"])
+
 def safe_json_loads(text: str) -> dict:
     text = (text or "").strip()
 
@@ -77,63 +71,98 @@ def validate_payload(data: dict) -> str | None:
         
     return None
 
+def render_replies(data: dict):
+    st.subheader("Reply suggestions")
 
-if generate_btn:
-    if not chat_text.strip():
-        st.warning("Paste some chat text first.")
-    else:
-        prompt = build_user_prompt(chat_text, language, tone, risk, goal)
+    for i, r in enumerate(data["replies"], start=1):
+        with st.chat_message("assistant"):
+            st.markdown(f"**Option {i}** · `{r['lang']}`")
+            st.write(r["text"])
+            st.info(f"💡 Coach insight: {r['style_note']}")
+            
+            with st.expander("Copy"):
+                st.code(r["text"], language=None)
 
-        if st.session_state["last_prompt"] == prompt and st.session_state["last_output"]:
+    safety_note = (data.get("safety_note") or "").strip()
+                    
+    if safety_note:
+        st.warning(f"🛡️ {safety_note}")
+
+def run_generation(chat_text: str, image: Image.Image | None):
+    prompt = build_user_prompt(chat_text, language, tone, risk, goal)
+    
+    cache_key = (prompt, bool(image))
+    if st.session_state["last_prompt"] == cache_key and st.session_state["last_output"]:
             raw = st.session_state["last_output"]
+    else:
+        st.session_state["is_generating"] = True
+        try:
+            with st.spinner("Generating..."):
+                raw = generate_text(prompt, SYSTEM_INSTRUCTION, image=image)
+
+            st.session_state["last_prompt"] = cache_key
+            st.session_state["last_output"] = raw
+        finally:
+            st.session_state["is_generating"] = False
+
+    if show_debug:
+        st.subheader("Prompt (debug)")
+        st.code(prompt)
+        
+    try:
+        data = safe_json_loads(raw)
+        err = validate_payload(data)
+        if err:
+            st.warning(err)
+            st.subheader("Raw model output")
+            st.code(raw)
         else:
-            raw = None
+            render_replies(data)
+
+    except json.JSONDecodeError:
+        st.warning("Model did not return valid JSON. Showing raw output:")
+        st.code(raw)
+
+with tab_text:
+    chat_text = st.text_area("Paste the chat context:", height=220, placeholder="Them: ...\nMe: ...")
+    disabled_flag = bool(st.session_state.get("is_generating", False))
+    generate_btn = st.button("Generate replies", type="primary", width="stretch", disabled=disabled_flag)
+
+    if generate_btn:
+        if not chat_text.strip():
+            st.warning("Paste some chat text first.")
+        else:
             try:
-                st.session_state["is_generating"] = True
-                with st.spinner("Generating..."):
-                    raw = generate_text(prompt, SYSTEM_INSTRUCTION)
-
-                st.session_state["last_prompt"] = prompt
-                st.session_state["last_output"]= raw
-
+                run_generation(chat_text, image=None)
             except GeminiError as e:
                 st.error(str(e))
-
             except Exception as e:
                 st.error(f"Unexpected error: {e}")
-    
-            finally:
-                st.session_state["is_generating"] = False
 
-        if raw:
+with tab_image:
+    st.write("Upload a screenshot of the chat.")
+
+    uploaded = st.file_uploader("Upload screenshot", type=["png", "jpg", "jpeg", "webp"])
+    disabled_flag = bool(st.session_state.get("is_generating", False))
+    generate_image_btn = st.button("Generate", type="primary", width="stretch", disabled=disabled_flag)
+
+    if uploaded is not None:
+        img_bytes = uploaded.read()
+        pil_img = Image.open(io.BytesIO(img_bytes)).convert("RGB")
+        st.image(pil_img, caption="Uploaded screenshot", use_container_width=True)
+    else:
+        pil_img = None
+
+    if generate_image_btn:
+        if pil_img is None:
+            st.warning("Upload a screenshot first.")
+        else:
+            chat_text_for_prompt = "Use the screenshot as the chat context."
+
             try:
-                data = safe_json_loads(raw)
-                err = validate_payload(data)
-                if err:
-                    st.warning(err)
-                    st.subheader("Raw model output")
-                    st.code(raw)
-                else:
-                    st.subheader("Reply suggestions")
+                run_generation(chat_text=chat_text_for_prompt, image=pil_img)
+            except GeminiError as e:
+                st.error(str(e))
+            except Exception as e:
+                st.error(f"Unexpected error: {e}")
 
-                    for i, r in enumerate(data["replies"], start=1):
-                        with st.container(border=True):
-                            st.markdown(f"**Option {i}** · `{r['lang']}`")
-                            st.write(r["text"])
-                            st.caption(r["style_note"])
-                            st.code(r["text"], language=None)
-
-                    safety_note = (data.get("safety_note") or "").strip()
-                    
-                    if safety_note:
-                        st.info(safety_note)
-
-            except json.JSONDecodeError:
-                st.warning("Model did not return valid JSON. Showing raw output:")
-                st.code(raw)
-
-        if show_debug:
-            st.subheader("Prompt (debug)")
-            st.code(prompt)
-                            
-            
