@@ -8,6 +8,11 @@ Your goal is to help users communicate clearly, kindly, and attractively.
 Return STRICT JSON only. No markdown. No extra text.
 """.strip()
 
+OCR_SYSTEM_INSTRUCTION = """
+You are a highly accurate OCR and context-exctraction assistant.
+Your job is to read chat screenshots, identify who is speaking, and transcribe them perfectly.
+""".strip()
+
 def build_user_prompt(chat_text: str, language: str, tone: str, risk: str, goal:str) -> str:
     chat_text = chat_text.strip()
 
@@ -33,7 +38,7 @@ def build_user_prompt(chat_text: str, language: str, tone: str, risk: str, goal:
                 "style_note": "string"
             }    
         ],
-        "safety:note": "string (short, consent/respect reminder if relevant)"
+        "safety_note": "string (short, consent/respect reminder if relevant)"
     }
 
     lang_rule = ""
@@ -68,3 +73,15 @@ SCHEMA:
 """.strip()
     
     return prompt
+
+def build_transcript_prompt(extra_context: str) -> str:
+    context_rule = f"\nEXTRA CONTEXT FROM USER: {extra_context}" if extra_context.strip() else ""
+    
+    return f"""
+Extract the exact text from this chat screenshot.
+Format it cleanly as a transcript (e.g., "Them: ...", "Me: ...").
+If the user provided extra context, use it to figure out who is who:
+EXTRA CONTEXT: {context_rule}
+
+Return ONLY the transcript. No intro, no markdown formatting.
+""".strip()

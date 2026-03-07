@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 from pathlib import Path
 from PIL import Image
 
-from src.llm.prompts import SYSTEM_INSTRUCTION, build_user_prompt
+from src.llm.prompts import SYSTEM_INSTRUCTION, OCR_SYSTEM_INSTRUCTION, build_user_prompt, build_transcript_prompt
 from src.llm.gemini_client import generate_text, GeminiError
 
 env_path = Path(__file__).parent / ".env"
@@ -143,6 +143,13 @@ with tab_image:
     st.write("Upload a screenshot of the chat.")
 
     uploaded = st.file_uploader("Upload screenshot", type=["png", "jpg", "jpeg", "webp"])
+
+    extra_context = st.text_area(
+        "Optional context",
+        placeholder="e.g., 'I am the blue messages' or 'She is the one on the left'",
+        height=68
+    )
+
     disabled_flag = bool(st.session_state.get("is_generating", False))
     generate_image_btn = st.button("Generate", type="primary", width="stretch", disabled=disabled_flag)
 
@@ -157,12 +164,24 @@ with tab_image:
         if pil_img is None:
             st.warning("Upload a screenshot first.")
         else:
-            chat_text_for_prompt = "Use the screenshot as the chat context."
-
             try:
-                run_generation(chat_text=chat_text_for_prompt, image=pil_img)
+                st.session_state["is_generating"] = True
+
+                with st.spinner("Reading screenshot..."):
+                    transcript_prompt = build_transcript_prompt(extra_context)
+                    transcript = generate_text(transcript_prompt, OCR_SYSTEM_INSTRUCTION, image=pil_img)
+                
+                st.success("Screenshot read successfully!")
+
+                with st.expander("View Extracted Chat"):
+                    st.text(transcript)
+
+                run_generation(chat_text=transcript, image=None)
+
             except GeminiError as e:
                 st.error(str(e))
             except Exception as e:
                 st.error(f"Unexpected error: {e}")
+            finally:
+                st.session_state["is_generating"] = False
 
